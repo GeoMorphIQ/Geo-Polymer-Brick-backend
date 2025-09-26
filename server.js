@@ -1,35 +1,44 @@
-const express = require("express");
-const http = require("http");
-const WebSocket = require("ws");
-const path = require("path");
+// server.js
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const PORT = process.env.PORT || 8080; // Render assigns a port dynamically
 
-const wss = new WebSocket.Server({ server });
+// Use Render's dynamic port
+const PORT = process.env.PORT || 3000;
 
-// Serve frontend only if needed (optional)
-// app.use(express.static(path.join(__dirname, "../frontend")));
+// Serve static files if needed (optional)
+app.use(express.static('public'));
 
-wss.on("connection", (ws) => {
-  console.log("Client connected");
-
-  ws.on("message", (msg) => {
-    try {
-      const data = JSON.parse(msg);
-      // Broadcast to all other clients
-      wss.clients.forEach((client) => {
-        if (client !== ws && client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify(data));
-        }
-      });
-    } catch (e) {
-      console.error("Invalid JSON received");
-    }
-  });
-
-  ws.on("close", () => console.log("Client disconnected"));
+// Socket.IO
+const io = new Server(server, {
+  path: '/', // ESP32 will connect to "/"
+  cors: { origin: '*' }
 });
 
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
+
+  // If you want, you can emit messages to browser clients:
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
+
+// Accept incoming messages from ESP32 and broadcast to all clients
+io.on('connection', (socket) => {
+  socket.on('message', (msg) => {
+    try {
+      const data = JSON.parse(msg);
+      io.emit('sensorData', data); // broadcast to all
+    } catch (e) {
+      console.error('Invalid JSON:', e);
+    }
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
