@@ -1,44 +1,47 @@
-// server.js
+// server.js (Corrected version)
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
+const { WebSocketServer } = require('ws'); // Use the 'ws' library
 
 const app = express();
 const server = http.createServer(app);
 
-// Use Render's dynamic port
+// Use Render's dynamic port or a default
 const PORT = process.env.PORT || 3000;
 
-// Serve static files if needed (optional)
-app.use(express.static('public'));
+// Set up the WebSocket Server
+const wss = new WebSocketServer({ server });
 
-// Socket.IO
-const io = new Server(server, {
-  path: '/', // ESP32 will connect to "/"
-  cors: { origin: '*' }
-});
+// Function to broadcast a message to all connected clients
+function broadcast(data) {
+    console.log("Broadcasting:", data);
+    wss.clients.forEach(client => {
+        // Check if the client's connection is open
+        if (client.readyState === client.OPEN) {
+            client.send(data);
+        }
+    });
+}
 
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+wss.on('connection', (ws) => {
+    console.log('Client connected');
 
-  // If you want, you can emit messages to browser clients:
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
-  });
-});
+    // When a message is received (from the ESP32)
+    ws.on('message', (message) => {
+        console.log('Received from ESP32:', message.toString());
+        // Broadcast the received message to all clients (including the browser)
+        broadcast(message.toString());
+    });
 
-// Accept incoming messages from ESP32 and broadcast to all clients
-io.on('connection', (socket) => {
-  socket.on('message', (msg) => {
-    try {
-      const data = JSON.parse(msg);
-      io.emit('sensorData', data); // broadcast to all
-    } catch (e) {
-      console.error('Invalid JSON:', e);
-    }
-  });
+    ws.on('close', () => {
+        console.log('Client disconnected');
+    });
+
+    ws.on('error', (error) => {
+        console.error('WebSocket Error:', error);
+    });
 });
 
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
